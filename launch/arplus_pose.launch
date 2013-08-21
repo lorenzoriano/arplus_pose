@@ -1,0 +1,36 @@
+<launch>
+    <arg name="machine" default="desktop"/> 
+    <arg name="is_right" default="true"/>
+    <arg name="threshold" default="100"/>
+    <arg if="$(arg is_right)" name="position" value="right"/>
+    <arg unless="$(arg is_right)" name="position" value="left"/> 
+    <arg name="pattern_saving_file" default=""/> 
+    <arg name="use_history" default="false" />
+
+   <include file="$(find monpal_launches)/launch/machine.launch" />
+   <!--node pkg="tf" type="static_transform_publisher" name="world_to_marker" 
+     args="0 0 0 0 1.57  world ar_marker 10" /-->
+
+
+	<node name="arplus_pose_node" pkg="arplus_pose" type="arplus_node" respawn="false" output="screen" machine="$(arg machine)">
+		<param name="multiPatternFile" type="string" value="$(find arplus_pose)/data/markerboard_0.cfg"/>
+		<!--param name="multiPatternFile" type="string" value="$(find arplus_pose)/data/markerboard_1.cfg"/-->
+		<!--param name="multiPatternFile" type="string" value="$(find arplus_pose)/data/markerboard_0-1-2-4.cfg"/-->
+		<param name="marker_width" type="double" value="121.0"/>
+		<param name="publish_tf" type="bool" value="false"/>
+		<param name="marker_center_x" type="double" value="0.0"/>
+		<param name="marker_center_y" type="double" value="0.0"/>
+		<param name="threshold" type="int" value="$(arg threshold)"/>
+		<param name="use_history" type="bool" value="$(arg use_history)"/>
+		<param name="reverse_transform" type="bool" value="false"/>
+		<param name="output_pattern_file" value="$(arg pattern_saving_file)"/>
+
+		<remap from="image" to="/monpal_stereo/$(arg position)/image_mono"/>
+		<remap from="camera_info" to="/monpal_stereo/$(arg position)/camera_info"/>				
+		<remap from="visualization_marker" to="/visualization_marker_$(arg position)"/>
+		<remap from="pose" to="/marker_pose_$(arg position)"/>
+        
+	</node>
+	
+
+</launch>
