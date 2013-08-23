@@ -12,6 +12,8 @@
 #include <visualization_msgs/Marker.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include <dynamic_reconfigure/server.h>
+#include <arplus_pose/arplusConfig.h>
 
 #include <opencv/cv.h>
 #include <algorithm>
@@ -27,6 +29,9 @@ public:
 
         if (!n_param.getParam("threshold", threshold_))
             threshold_ = 100;
+        if (!n_param.getParam("is_right", is_right_))
+            is_right_ = true;
+
         ROS_INFO ("\tThreshold: %d", threshold_);
         if (!n_param.getParam("marker_width", markerWidth_))
             markerWidth_ = 127.0;
@@ -38,6 +43,8 @@ public:
         rvizMarkerPub_ = n_.advertise<visualization_msgs::Marker>(
                              "visualization_marker", 0);
         posePub_ = n_.advertise<geometry_msgs::PoseStamped>("pose", 0);
+        dyn_server_.setCallback(boost::bind(&ARPlus_Node::reconfigureCb,
+                                            this, _1, _2));
     }
 
 protected:
@@ -64,8 +71,8 @@ protected:
         tracker_->setUndistortionMode(ARToolKitPlus::UNDIST_LUT);
         tracker_->setMarkerMode(ARToolKitPlus::MARKER_ID_BCH);
         tracker_->setImageProcessingMode(ARToolKitPlus::IMAGE_FULL_RES);
-        tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_RPP);
-//        tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_ORIGINAL);
+//        tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_RPP);
+        tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_ORIGINAL);
 //        tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_ORIGINAL_CONT);
         tracker_->setBorderWidth(0.125f);
         tracker_->setCamera(camera);
@@ -73,11 +80,12 @@ protected:
         tracker_->setNumAutoThresholdRetries(20);
         tracker_->setUseDetectLite(false);
 
-        tracker_->setHullMode(ARToolKitPlus::HULL_FULL);
-//        tracker_->setHullMode(ARToolKitPlus::HULL_OFF);
+
+//        tracker_->setHullMode(ARToolKitPlus::HULL_FULL);
+        tracker_->setHullMode(ARToolKitPlus::HULL_OFF);
+//        tracker_->setHullMode(ARToolKitPlus::HULL_FOUR);
 
     }
-
 
     void camInfoCallback (const sensor_msgs::CameraInfoConstPtr & cam_info) {
 
@@ -144,9 +152,9 @@ protected:
 
 
         int numDetected = tracker_->calc(camerabuffer);
-        ROS_INFO("Threshod: %d, Number of markers found: %d",
-                 tracker_->getThreshold(),
-                 numDetected);
+//        ROS_INFO("Threshod: %d, Number of markers found: %d",
+//                 tracker_->getThreshold(),
+//                 numDetected);
 
         if (numDetected == 0)
             return;
@@ -157,8 +165,8 @@ protected:
 
         ARFloat trans_matrix[3][4];
         memset(trans_matrix, 0, sizeof(trans_matrix));
-        memcpy(trans_matrix, config->trans, sizeof(trans_matrix));
-//        tracker_->getARMatrix(trans_matrix);
+//        memcpy(trans_matrix, config->trans, sizeof(trans_matrix));
+        tracker_->getARMatrix(trans_matrix);
 
         //conversion from ArPoseToolkit (float) to tf (double)
         tf::Matrix3x3 rotation;
@@ -169,6 +177,14 @@ protected:
                                 trans_matrix[1][3],
                                 trans_matrix[2][3]);
         translation *= 0.001;
+        //checking for spurious values
+
+        if (translation.length() < 0.1) {
+            ROS_WARN("Possibly wrong position value for translation: (%f,%f,%f)",
+                     translation.x(), translation.y(), translation.z());
+            return;
+        }
+
 
         tf::Transform T(rotation, translation);
 
@@ -191,9 +207,16 @@ protected:
         rvizMarker.ns = "basic_shapes";
         rvizMarker.type = visualization_msgs::Marker::CUBE;
         rvizMarker.action = visualization_msgs::Marker::ADD;
-        rvizMarker.color.r = 0.0f;
-        rvizMarker.color.g = 1.0f;
-        rvizMarker.color.b = 0.0f;
+        if (is_right_) {
+            rvizMarker.color.r = 0.0f;
+            rvizMarker.color.g = 1.0f;
+            rvizMarker.color.b = 0.0f;
+        }
+        else {
+            rvizMarker.color.r = 1.0f;
+            rvizMarker.color.g = 0.0f;
+            rvizMarker.color.b = 0.0f;
+        }
         rvizMarker.color.a = 1.0;
 
         rvizMarker.lifetime = ros::Duration(1.0);
@@ -204,9 +227,47 @@ protected:
         pose.header.stamp = image_msg->header.stamp;
         pose.pose = rvizMarker.pose;
         posePub_.publish(pose);
-        ROS_INFO_STREAM("Pose: "<<pose);
+//        ROS_INFO_STREAM("Pose: "<<pose);
 
     }
+
+    void reconfigureCb(arplus_pose::arplusConfig& config, uint32_t level) {
+
+        if (tracker_ == NULL) {
+            ROS_WARN("Tracker not initialized yet");
+            return;
+        }
+        switch(config.pose_estimator) {
+        case 0:
+            ROS_INFO("Changing pose estimator to RPP");
+            tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_RPP);
+            break;
+        case 1:
+            ROS_INFO("Changing pose estimator to Origingal");
+            tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_ORIGINAL);
+            break;
+        case 2:
+            ROS_INFO("Changing pose estimator to Original Cont");
+            tracker_->setPoseEstimator(ARToolKitPlus::POSE_ESTIMATOR_ORIGINAL_CONT);
+            break;
+        }
+        switch(config.hull_type) {
+        case 0:
+            ROS_INFO("Changing hull type to full");
+            tracker_->setHullMode(ARToolKitPlus::HULL_FULL);
+            break;
+        case 1:
+            ROS_INFO("Changing hull type to four");
+            tracker_->setHullMode(ARToolKitPlus::HULL_FOUR);
+            break;
+        case 2:
+            ROS_INFO("Changing hull type to off");
+            tracker_->setHullMode(ARToolKitPlus::HULL_OFF);
+            break;
+        }
+
+    }
+
 
     ros::NodeHandle n_;
     image_transport::ImageTransport it_;
@@ -215,8 +276,10 @@ protected:
     sensor_msgs::CameraInfo cam_info_;
     ros::Publisher rvizMarkerPub_;
     ros::Publisher posePub_;
+    dynamic_reconfigure::Server<arplus_pose::arplusConfig> dyn_server_;
 
     bool getCamInfo_;
+    bool is_right_;
     int threshold_;
     double markerWidth_;
     boost::shared_ptr<ARToolKitPlus::TrackerMultiMarker> tracker_;

@@ -40,6 +40,11 @@ find_package(OpenCV REQUIRED)
 #   geometry_msgs#   visualization_msgs
 # )
 
+#add dynamic reconfigure api
+generate_dynamic_reconfigure_options(
+  cfg/arplus_params.cfg
+)
+
 ###################################
 ## catkin specific configuration ##
 ###################################
@@ -55,6 +60,7 @@ catkin_package(
   CATKIN_DEPENDS cv_bridge dynamic_reconfigure geometry_msgs image_transport roscpp tf visualization_msgs
   DEPENDS OpenCV
 )
+
 
 ###########
 ## Build ##
@@ -74,9 +80,11 @@ include_directories(
 #   src/${PROJECT_NAME}/arplus_pose.cpp
 # )
 
+
 ## Declare a cpp executable
 # add_executable(arplus_pose_node src/arplus_pose_node.cpp)
 add_executable(test_arplus src/test.cpp)
+add_dependencies(test_arplus ${PROJECT_NAME}_EXPORTED_TARGETS)
 target_link_libraries(test_arplus
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
@@ -84,6 +92,7 @@ target_link_libraries(test_arplus
 )
 
 add_executable(arplus_node src/arplus_node.cpp include/arplus_node.h)
+add_dependencies(test_arplus ${PROJECT_NAME}_EXPORTED_TARGETS)
 target_link_libraries(arplus_node
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
